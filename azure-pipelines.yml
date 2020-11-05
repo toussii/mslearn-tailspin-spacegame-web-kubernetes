@@ -1,39 +1,63 @@
-apiVersion : apps/v1
-kind: Deployment
-metadata:
-  name: web
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: web
-  template:
-    metadata:
-      labels:
-        app: web
-    spec:
-      containers:
-        - name: web
-          image: tailspinspacegame15216.azurecr.io/web
-          ports:
-          - containerPort: 80
----
-apiVersion : apps/v1
-kind: Deployment
-metadata:
-  name: leaderboard
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: leaderboard
-  template:
-    metadata:
-      labels:
-        app: leaderboard
-    spec:
-      containers:
-        - name: leaderboard
-          image: tailspinspacegame15216.azurecr.io/leaderboard
-          ports:
-          - containerPort: 80
+trigger:
+  - master
+variables:
+  buildConfiguration: Release
+  leaderboardRepository: leaderboard
+  webRepository: web
+  tag: $(Build.BuildId)
+  imagePullSecret: secret
+stages:
+  - stage: Build
+    displayName: Build and push
+    jobs:
+      - job: Build
+        displayName: Build job
+        pool:
+          vmImage: ubuntu-18.04
+        steps:
+          - task: Docker@2
+            displayName: Build and push the image to container registry
+            inputs:
+              command: buildAndPush
+              buildContext: $(Build.Repository.LocalPath)
+              repository: $(webRepository)
+              dockerfile: $(Build.SourcesDirectory)/Tailspin.SpaceGame.Web/Dockerfile
+              containerRegistry: Container Registry Connection
+              tags: |
+                $(tag)
+          - task: Docker@2
+            displayName: Build and push the leaderboard image to container registry
+            inputs:
+              command: buildAndPush
+              buildContext: $(Build.Repository.LocalPath)
+              repository: $(leaderboardRepository)
+              dockerfile: >-
+                $(Build.SourcesDirectory)/Tailspin.SpaceGame.LeaderboardContainer/Dockerfile
+              containerRegistry: Container Registry Connection
+              tags: |
+                $(tag)
+          - publish: $(Build.SourcesDirectory)/manifests
+            artifact: manifests
+  - stage: Deploy
+    displayName: Deploy the container
+    dependsOn: Build
+    jobs:
+      - job: Deploy
+        displayName: Deploy job
+        pool:
+          vmImage: ubuntu-18.04
+        environment: spike.default
+        variables:
+          - group: Release
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: manifests
+        steps:
+          - task: AzureWebAppContainer@1
+            inputs:
+              appName: $(WebAppName)
+              azureSubscription: Resource Manager - Tailspin - Space Game
+              imageName: '$(RegistryName)/$(webRepository):$(build.buildId)'
