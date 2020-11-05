@@ -1,43 +1,39 @@
-trigger: none
-
-variables:
-  buildConfiguration: 'Release'
-  webRepository: 'web'
-  tag: '$(Build.BuildId)'
-
-stages:
-- stage: 'Build'
-  displayName: 'Build and push'
-  jobs:  
-  - job: 'Build'
-    displayName: 'Build job'
-    pool:
-      vmImage: 'ubuntu-18.04'
-    steps:
-    - task: Docker@2
-      displayName: 'Build and push the image to container registry'
-      inputs:
-        command: buildAndPush
-        buildContext: $(Build.Repository.LocalPath)
-        repository: $(webRepository)
-        dockerfile: '$(Build.SourcesDirectory)/Tailspin.SpaceGame.Web/Dockerfile'
-        containerRegistry: 'Container Registry Connection'
-        tags: |
-          $(tag)
-
-- stage: 'Deploy'
-  displayName: 'Deploy the container'
-  dependsOn: Build
-  jobs:
-  - job: 'Deploy'
-    displayName: 'Deploy job'
-    pool:
-      vmImage: 'ubuntu-18.04'
-    variables:
-    - group: Release
-    steps:
-    - task: AzureWebAppContainer@1
-      inputs:
-       appName: $(WebAppName)
-       azureSubscription: 'Resource Manager - Tailspin - Space Game'
-       imageName: $(RegistryName)/$(webRepository):$(build.buildId)
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: tailspinspacegame4692.azurecr.io/web
+          ports:
+          - containerPort: 80
+---
+apiVersion : apps/v1
+kind: Deployment
+metadata:
+  name: leaderboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: leaderboard
+  template:
+    metadata:
+      labels:
+        app: leaderboard
+    spec:
+      containers:
+        - name: leaderboard
+          image: tailspinspacegame4692.azurecr.io/leaderboard
+          ports:
+          - containerPort: 80
